@@ -7,7 +7,22 @@ class Worker:
 
         print(f"{self.name} is executing: {task.name}")
 
-        task.status = "SUCCESS"
+        try:
+            task.function()
 
-        print(f"Task {task.task_id} completed with status: {task.status}")
-    
+            task.status = "SUCCESS"
+
+            print(
+                f"Task {task.task_id} completed with status: {task.status}"
+            )
+
+            return True
+
+        except Exception as error:
+            task.status = "FAILED"
+
+            print(
+                f"Task {task.task_id} failed with error: {error}"
+            )
+
+            return False
