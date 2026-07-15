@@ -3,6 +3,7 @@ import sqlite3
 
 class Database:
     def __init__(self, db_name="task_queue.db"):
+        self.db_name = db_name
         self.connection = sqlite3.connect(db_name)
         self.create_tasks_table()
 
@@ -50,21 +51,24 @@ class Database:
         self.connection.commit()
 
     def update_task(self, task):
-        self.connection.execute(
-            """
-            UPDATE tasks
-            SET status = ?,
-                retry_count = ?
-            WHERE task_id = ?
-            """,
-            (
-                task.status,
-                task.retry_count,
-                task.task_id,
-            ),
-        )
+     connection = sqlite3.connect(self.db_name)
 
-        self.connection.commit()
+     connection.execute(
+        """
+        UPDATE tasks
+        SET status = ?,
+            retry_count = ?
+        WHERE task_id = ?
+        """,
+        (
+            task.status,
+            task.retry_count,
+            task.task_id,
+        ),
+    )
+
+     connection.commit()
+     connection.close()
 
     def load_task(self, task_id):
         cursor = self.connection.execute(

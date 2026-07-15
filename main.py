@@ -1,18 +1,24 @@
 import time
+import threading
 
 from task import Task
-from queue import TaskQueue
+from task_queue import TaskQueue
 from worker import Worker
 from database import Database
 
 
 def buy_groceries():
+    time.sleep(3)
     print("Groceries purchased")
 
+
 def send_email():
+    time.sleep(3)
     raise Exception("Email server is down")
 
+
 def generate_pdf():
+    time.sleep(3)
     print("PDF generated")
 
 FUNCTION_REGISTRY = {
@@ -23,11 +29,16 @@ FUNCTION_REGISTRY = {
 
 database = Database()
 queue = TaskQueue()
-worker = Worker("Worker-1")
+SHUTDOWN = object()
+workers = [
+    Worker("Worker-1"),
+    Worker("Worker-2"),
+    Worker("Worker-3"),
+]
 
-task1 = Task(1, "Buy groceries", buy_groceries)
-task2 = Task(2, "Send email", send_email)
-task3 = Task(3, "Generate PDF", generate_pdf)
+task1 = Task(13, "Buy groceries", buy_groceries)
+task2 = Task(14, "Send email", send_email)
+task3 = Task(15, "Generate PDF", generate_pdf)
 
 
 existing_task_ids = database.load_all_task_ids()
@@ -61,35 +72,62 @@ for task in fresh_tasks:
         database.save_task(task)
         queue.add_task(task)
 
-while True:
-    task = queue.get_task()
+def worker_loop(worker):
+    while True:
+        task = queue.get_task()
 
-    if task is None:
-        break
+        if task is None:
+            continue
 
-    success = worker.execute(task)
-    database.update_task(task)
+        if task is SHUTDOWN:
+            queue.task_done()
+            break
 
-    if not success:
-        if task.retry_count < task.max_retries:
-            task.retry_count += 1
-            delay = 2 ** (task.retry_count - 1)
-            task.status = "PENDING"
-            database.update_task(task)
+        success = worker.execute(task)
+        database.update_task(task)
 
-            print(
-                f"Retrying Task {task.task_id}. "
-                f"Retry count: {task.retry_count}"
-            )
+        if not success:
+            if task.retry_count < task.max_retries:
+                task.retry_count += 1
+                delay = 2 ** (task.retry_count - 1)
+                task.status = "PENDING"
+                database.update_task(task)
 
-            print(f"Waiting {delay} seconds before retry")
+                print(
+                    f"Retrying Task {task.task_id}. "
+                    f"Retry count: {task.retry_count}"
+                )
 
-            time.sleep(delay)
+                print(f"Waiting {delay} seconds before retry")
 
-            queue.add_task(task)
+                time.sleep(delay)
 
-        else:
-            print(
-                f"Task {task.task_id} reached maximum retries "
-                f"and permanently failed"
-            )
+                queue.add_task(task)
+
+            else:
+                print(
+                    f"Task {task.task_id} reached maximum retries "
+                    f"and permanently failed"
+                )
+        queue.task_done()
+
+threads = []
+
+for worker in workers:
+    thread = threading.Thread(
+        target=worker_loop,
+        args=(worker,),
+    )
+
+    threads.append(thread)
+    thread.start()
+
+queue.wait_until_complete()
+
+for worker in workers:
+    queue.add_task(SHUTDOWN)
+
+queue.wait_until_complete()
+
+for thread in threads:
+    thread.join()
